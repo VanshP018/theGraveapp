@@ -13,14 +13,19 @@
     "@nestjs/core": "^10.4.0",
     "@nestjs/platform-express": "^10.4.0",
     "@tgi/shared": "workspace:*",
+    "lib0": "^0.2.120",
     "livekit-server-sdk": "^2.6.0",
     "pg": "^8.23.1",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "ws": "^8.23.0",
+    "y-protocols": "^1.0.7",
+    "yjs": "^13.6.33"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/pg": "^8.23.1",
+    "@types/ws": "^8.18.2",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"
   }

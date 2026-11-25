@@ -8,9 +8,10 @@ import {
   type RemoteTrack,
   type RemoteTrackPublication,
 } from 'livekit-client';
-import type { ChatMessage } from '@tgi/shared';
-import { fetchMessages, joinRoom, sendMessage } from '../lib/api';
+import type { ChatMessage, RunEvent } from '@tgi/shared';
+import { fetchLastRun, fetchMessages, joinRoom, runCode, sendMessage } from '../lib/api';
 import { Chat } from '../components/Chat';
+import { CodeEditor } from '../components/CodeEditor';
 import { ScreenPicker } from '../components/ScreenPicker';
 import type { LobbyResult } from './Lobby';
 import type { MediaChoice } from './PreJoin';
@@ -78,11 +79,15 @@ export function Call({ session, media, onLeave }: Props) {
   const [camOn, setCamOn] = useState(media.videoEnabled);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [chatOpen, setChatOpen] = useState(false);
+  const [codeOpen, setCodeOpen] = useState(false);
+  const [token, setToken] = useState('');
+  const [run, setRun] = useState<RunEvent | null>(null);
   const [unread, setUnread] = useState(0);
   const [picking, setPicking] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
   const addRef = useRef<(m: ChatMessage[]) => void>(() => {});
+  const applyRunRef = useRef<(e: RunEvent) => void>(() => {});
   const [, force] = useState(0);
 
   useEffect(() => {
@@ -99,6 +104,11 @@ export function Call({ session, media, onLeave }: Props) {
         return [...prev, ...fresh].sort((a, b) => a.sentAt.localeCompare(b.sentAt));
       });
     addRef.current = addMessages;
+
+    // The same run arrives via data channel and the POST response; never let a late 'running' undo a result.
+    const applyRun = (e: RunEvent) =>
+      setRun((prev) => (prev && prev.id === e.id && prev.status !== 'running' && e.status === 'running' ? prev : e));
+    applyRunRef.current = applyRun;
 
     const refresh = () => {
       setParticipants([room.localParticipant, ...Array.from(room.remoteParticipants.values())]);
@@ -117,11 +127,14 @@ export function Call({ session, media, onLeave }: Props) {
       .on(RoomEvent.Reconnecting, () => setStatus('reconnecting'))
       .on(RoomEvent.Reconnected, () => setStatus('connected'))
       .on(RoomEvent.DataReceived, (payload: Uint8Array, _p, _k, topic?: string) => {
-        if (topic !== 'chat') return;
         try {
-          const msg = JSON.parse(new TextDecoder().decode(payload)) as ChatMessage;
-          addMessages([msg]);
-          if (!chatOpenRef.current) setUnread((n) => n + 1);
+          const data = JSON.parse(new TextDecoder().decode(payload));
+          if (topic === 'chat') {
+            addMessages([data as ChatMessage]);
+            if (!chatOpenRef.current) setUnread((n) => n + 1);
+          } else if (topic === 'run') {
+            applyRun(data as RunEvent);
+          }
         } catch {
           /* ignore malformed packets */
         }
@@ -134,12 +147,14 @@ export function Call({ session, media, onLeave }: Props) {
         const { token, livekitUrl } = await joinRoom(session);
         if (cancelled) return;
         tokenRef.current = token;
+        setToken(token);
         await room.connect(livekitUrl, token);
         if (cancelled) return;
         await room.localParticipant.setMicrophoneEnabled(media.audioEnabled, media.audioDeviceId ? { deviceId: media.audioDeviceId } : undefined);
         await room.localParticipant.setCameraEnabled(media.videoEnabled, media.videoDeviceId ? { deviceId: media.videoDeviceId } : undefined);
         setStatus('connected');
         refresh();
+        fetchLastRun(session.roomCode, token).then((e) => e && applyRun(e)).catch(() => { /* best-effort */ });
         fetchMessages(session.roomCode, token).then(addMessages).catch(() => { /* history is best-effort */ });
       } catch (e) {
         if (!cancelled) {
@@ -176,6 +191,10 @@ export function Call({ session, media, onLeave }: Props) {
   const send = async (text: string) => {
     const saved = await sendMessage(session.roomCode, tokenRef.current, text);
     addRef.current([saved]);
+  };
+
+  const handleRun = async (stdin: string) => {
+    applyRunRef.current(await runCode(session.roomCode, tokenRef.current, stdin));
   };
 
   const startShare = async (sourceId: string) => {
@@ -220,7 +239,17 @@ export function Call({ session, media, onLeave }: Props) {
       {shareError && <p className="error" style={{ padding: '0 16px' }}>{shareError}</p>}
 
       <div className="body-row">
-      {sharer ? (
+      {codeOpen && token ? (
+        <section className="stage">
+          <div className="main">
+            <CodeEditor roomCode={session.roomCode} token={token} displayName={session.displayName} role={session.role} run={run} onRun={handleRun} />
+          </div>
+          <div className="strip">
+            {sharer && <Tile key={`${sharer.identity}-screen`} participant={sharer} source={Track.Source.ScreenShare} />}
+            {participants.map((p) => <Tile key={p.identity} participant={p} />)}
+          </div>
+        </section>
+      ) : sharer ? (
         <section className="stage">
           <div className="main"><Tile key={`${sharer.identity}-screen`} participant={sharer} source={Track.Source.ScreenShare} /></div>
           <div className="strip">{participants.map((p) => <Tile key={p.identity} participant={p} />)}</div>
@@ -243,6 +272,7 @@ export function Call({ session, media, onLeave }: Props) {
             Share screen
           </button>
         )}
+        <button className={codeOpen ? 'primary' : ''} onClick={() => setCodeOpen((v) => !v)}>Code</button>
         <button onClick={toggleChat}>Chat{unread > 0 && <span className="unread">{unread}</span>}</button>
         <button className="danger" onClick={onLeave}>Leave</button>
       </footer>

@@ -7,6 +7,7 @@
     "dev:desktop": "pnpm --filter @tgi/desktop dev",
     "dev:api": "pnpm --filter @tgi/api start:dev",
     "infra:up": "docker compose -f infra/docker-compose.yml up -d",
+    "sandbox:pull": "sh infra/sandbox/pull.sh",
     "infra:down": "docker compose -f infra/docker-compose.yml down",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint"
