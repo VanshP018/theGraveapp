@@ -41,7 +41,7 @@ export function Lobby({ onContinue, notice }: { onContinue: (r: LobbyResult) => 
   return (
     <main className="center">
       <div className="title-row">
-        <h1>theGraveinter</h1>
+        <h1>theGrave</h1>
         <button onClick={() => setShowSettings(true)} aria-label="Settings">⚙ Settings</button>
       </div>
 

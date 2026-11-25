@@ -1,5 +1,6 @@
 import { app, BrowserWindow, desktopCapturer, ipcMain, Menu, session, shell, systemPreferences } from 'electron';
 import { join } from 'node:path';
+import { initAutoUpdate } from './updater';
 
 let selectedSourceId: string | null = null;
 
@@ -63,13 +64,17 @@ function registerScreenShare(): void {
   });
 }
 
+// Packaged builds get their icon from electron-builder; this only covers `pnpm dev`.
+const devIcon = app.isPackaged ? undefined : join(__dirname, '../../build/icon.png');
+
 function createWindow(): void {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 960,
     minHeight: 600,
-    title: 'theGraveinter',
+    title: 'theGrave',
+    ...(devIcon ? { icon: devIcon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -110,9 +115,11 @@ app.whenReady().then(async () => {
     }
   }
 
+  if (devIcon && process.platform === 'darwin') app.dock?.setIcon(devIcon);
   registerScreenShare();
   buildMenu();
   createWindow();
+  initAutoUpdate();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

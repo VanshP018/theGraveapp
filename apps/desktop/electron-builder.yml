@@ -1,0 +1,28 @@
+appId: com.thegrave.app
+productName: theGrave
+directories:
+  buildResources: build
+  output: dist
+files:
+  - out/**
+  - package.json
+asar: true
+publish:
+  provider: github
+  releaseType: release
+mac:
+  category: public.app-category.business
+  target: [dmg, zip]   # zip is required by electron-updater on macOS
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: true       # needs APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID
+  extendInfo:
+    NSCameraUsageDescription: theGrave needs your camera for the interview video call.
+    NSMicrophoneUsageDescription: theGrave needs your microphone for the interview call.
+win:
+  target: [nsis]       # signing is picked up from CSC_LINK / CSC_KEY_PASSWORD or WIN_CSC_*
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
