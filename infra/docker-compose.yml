@@ -1,0 +1,33 @@
+services:
+  livekit:
+    image: livekit/livekit-server:latest
+    command: --config /etc/livekit.yaml --node-ip 127.0.0.1
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "50000-50100:50000-50100/udp"
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: tgi
+      POSTGRES_PASSWORD: tgi
+      POSTGRES_DB: tgi
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./db:/docker-entrypoint-initdb.d:ro
+
+  redis:
+    image: redis:7
+    ports:
+      - "6381:6379"
+
+  # Added in M5 (needs privileged mode and runtime install); kept here as a reminder.
+  # piston:
+  #   image: ghcr.io/engineer-man/piston
+  #   privileged: true
+  #   ports: ["2000:2000"]

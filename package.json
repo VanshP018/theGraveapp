@@ -1,0 +1,14 @@
+{
+  "name": "the-grave-inter",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.34.6",
+  "scripts": {
+    "dev:desktop": "pnpm --filter @tgi/desktop dev",
+    "dev:api": "pnpm --filter @tgi/api start:dev",
+    "infra:up": "docker compose -f infra/docker-compose.yml up -d",
+    "infra:down": "docker compose -f infra/docker-compose.yml down",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint"
+  }
+}
