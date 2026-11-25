@@ -1,7 +1,27 @@
-import { app, BrowserWindow, desktopCapturer, ipcMain, session, shell, systemPreferences } from 'electron';
+import { app, BrowserWindow, desktopCapturer, ipcMain, Menu, session, shell, systemPreferences } from 'electron';
 import { join } from 'node:path';
 
 let selectedSourceId: string | null = null;
+
+function buildMenu(): void {
+  const isMac = process.platform === 'darwin';
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      ...(isMac ? [{ role: 'appMenu' as const }] : []),
+      {
+        label: 'File',
+        submenu: [
+          // Lets one person play both sides of an interview on one machine.
+          { label: 'New Window', accelerator: 'CmdOrCtrl+Shift+N', click: () => createWindow() },
+          isMac ? { role: 'close' as const } : { role: 'quit' as const },
+        ],
+      },
+      { role: 'editMenu' as const },
+      { role: 'viewMenu' as const },
+      { role: 'windowMenu' as const },
+    ]),
+  );
+}
 
 function registerScreenShare(): void {
   ipcMain.handle('screen:status', () =>
@@ -91,6 +111,7 @@ app.whenReady().then(async () => {
   }
 
   registerScreenShare();
+  buildMenu();
   createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

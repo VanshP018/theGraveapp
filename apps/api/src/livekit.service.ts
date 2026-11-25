@@ -10,6 +10,11 @@ export class LiveKitService {
     process.env.LIVEKIT_API_SECRET ?? 'devsecret-devsecret-devsecret-32chars',
   );
 
+  /** Shared room state every participant receives immediately, including people who join later. */
+  async setRoomState(room: string, state: Record<string, unknown>): Promise<void> {
+    await this.client.updateRoomMetadata(room, JSON.stringify(state));
+  }
+
   /** Fire-and-forget: callers have already saved/returned the data, so a failure is only logged. */
   broadcast(room: string, topic: string, payload: unknown): void {
     void this.client

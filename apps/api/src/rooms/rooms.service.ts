@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { AccessToken } from 'livekit-server-sdk';
 import { randomBytes } from 'node:crypto';
 import type { JoinRoomRequest, JoinRoomResponse } from '@tgi/shared';
@@ -20,8 +20,13 @@ export class RoomsService {
   }
 
   async join(req: JoinRoomRequest): Promise<JoinRoomResponse> {
+    const { rows } = await this.db.pool.query(`SELECT 1 FROM interviews WHERE room_code = $1`, [req.roomCode]);
+    if (rows.length === 0) throw new NotFoundException('That room code does not exist');
+
+    // A stable id keeps a person's identity across rejoins; otherwise fall back to a random one.
+    const stable = req.clientId?.replace(/[^\w-]/g, '').slice(0, 40);
     const token = new AccessToken(this.apiKey, this.apiSecret, {
-      identity: `${req.role}-${req.displayName}-${randomBytes(2).toString('hex')}`,
+      identity: `${req.role}-${stable || randomBytes(4).toString('hex')}`,
       name: req.displayName,
       ttl: '2h',
     });

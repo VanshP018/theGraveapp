@@ -4,13 +4,15 @@ import type { ChatMessage } from '@tgi/shared';
 interface Props {
   messages: ChatMessage[];
   selfName: string;
+  /** LiveKit identity of this window; older messages without an id fall back to the display name. */
+  selfId?: string;
   onSend: (text: string) => Promise<void>;
   onClose: () => void;
 }
 
 const MAX_LENGTH = 2000;
 
-export function Chat({ messages, selfName, onSend, onClose }: Props) {
+export function Chat({ messages, selfName, selfId, onSend, onClose }: Props) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +47,7 @@ export function Chat({ messages, selfName, onSend, onClose }: Props) {
       <div className="chat-list">
         {messages.length === 0 && <p className="muted">No messages yet.</p>}
         {messages.map((m) => {
-          const mine = m.sender === selfName;
+          const mine = m.senderId ? m.senderId === selfId : m.sender === selfName;
           return (
             <div key={m.id} className={`msg ${mine ? 'mine' : ''}`}>
               <div className="meta">

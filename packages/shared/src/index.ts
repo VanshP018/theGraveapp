@@ -4,6 +4,8 @@ export interface JoinRoomRequest {
   roomCode: string;
   displayName: string;
   role: Role;
+  /** Stable per-window id; lets the UI tell "me" apart from someone with the same name. */
+  clientId?: string;
 }
 
 export interface JoinRoomResponse {
@@ -16,6 +18,8 @@ export interface ChatMessage {
   id: string;
   roomName: string;
   sender: string;
+  /** LiveKit identity of the sender; absent on messages saved before this field existed. */
+  senderId?: string;
   text: string;
   sentAt: string;
 }

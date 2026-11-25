@@ -38,14 +38,15 @@ export class ChatService {
       id: randomUUID(),
       roomName: who.room,
       sender: who.name,
+      senderId: who.identity,
       text,
       sentAt: new Date().toISOString(),
     };
 
     const interviewId = await this.db.interviewId(who.room);
     await this.db.pool.query(
-      `INSERT INTO chat_messages (id, interview_id, sender, body, sent_at) VALUES ($1, $2, $3, $4, $5)`,
-      [message.id, interviewId, message.sender, message.text, message.sentAt],
+      `INSERT INTO chat_messages (id, interview_id, sender, sender_id, body, sent_at) VALUES ($1, $2, $3, $4, $5, $6)`,
+      [message.id, interviewId, message.sender, message.senderId, message.text, message.sentAt],
     );
 
     // Clients dedupe by id and can reload history, so a failed broadcast loses nothing.
@@ -55,14 +56,14 @@ export class ChatService {
 
   async history(room: string, limit = 200): Promise<ChatMessage[]> {
     const { rows } = await this.db.pool.query(
-      `SELECT m.id, i.room_code AS "roomName", m.sender, m.body AS text, m.sent_at AS "sentAt"
+      `SELECT m.id, i.room_code AS "roomName", m.sender, m.sender_id AS "senderId", m.body AS text, m.sent_at AS "sentAt"
        FROM chat_messages m JOIN interviews i ON i.id = m.interview_id
        WHERE i.room_code = $1
        ORDER BY m.sent_at DESC LIMIT $2`,
       [room, limit],
     );
     return rows
-      .map((r) => ({ ...r, sentAt: new Date(r.sentAt).toISOString() }) as ChatMessage)
+      .map((r) => ({ ...r, senderId: r.senderId ?? undefined, sentAt: new Date(r.sentAt).toISOString() }) as ChatMessage)
       .reverse();
   }
 }

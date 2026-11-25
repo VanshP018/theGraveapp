@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { listDevices, type DeviceLists } from '../lib/devices';
+import { getSettings, updateSettings } from '../lib/settings';
 import type { LobbyResult } from './Lobby';
 
 export interface MediaChoice {
@@ -19,8 +20,8 @@ export function PreJoin({ session, onJoin, onBack }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [devices, setDevices] = useState<DeviceLists>({ cameras: [], mics: [], speakers: [] });
-  const [videoId, setVideoId] = useState<string>();
-  const [audioId, setAudioId] = useState<string>();
+  const [videoId, setVideoId] = useState<string | undefined>(getSettings().cameraId);
+  const [audioId, setAudioId] = useState<string | undefined>(getSettings().micId);
   const [videoOn, setVideoOn] = useState(true);
   const [audioOn, setAudioOn] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,16 +45,25 @@ export function PreJoin({ session, onJoin, onBack }: Props) {
       setError(null);
     } catch (e) {
       const name = (e as DOMException).name;
+      // A remembered device may have been unplugged; fall back to the system defaults once.
+      if ((name === 'OverconstrainedError' || name === 'NotFoundError') && (v || a)) {
+        setVideoId(undefined);
+        setAudioId(undefined);
+        updateSettings({ cameraId: undefined, micId: undefined });
+        return start();
+      }
       setError(
         name === 'NotAllowedError'
           ? 'Camera/microphone access was denied. Allow it in your system settings and retry.'
-          : 'Could not open your camera or microphone.',
+          : name === 'NotReadableError'
+            ? 'Your camera or microphone is being used by another app. Close it and retry.'
+            : 'Could not open your camera or microphone.',
       );
     }
   }, []);
 
   useEffect(() => {
-    void start();
+    void start(getSettings().cameraId, getSettings().micId);
     return stop;
   }, [start]);
 
@@ -81,6 +91,7 @@ export function PreJoin({ session, onJoin, onBack }: Props) {
 
   const join = () => {
     stop(); // release devices so LiveKit can open them
+    updateSettings({ cameraId: videoId, micId: audioId });
     onJoin({ videoDeviceId: videoId, audioDeviceId: audioId, videoEnabled: videoOn, audioEnabled: audioOn });
   };
 
@@ -116,7 +127,12 @@ export function PreJoin({ session, onJoin, onBack }: Props) {
         </select>
       </label>
 
-      {error && <p className="error">{error}</p>}
+      {error && (
+        <>
+          <p className="error">{error}</p>
+          <button onClick={() => void start(videoId, audioId)}>Retry</button>
+        </>
+      )}
 
       <div className="row">
         <button onClick={onBack}>Back</button>

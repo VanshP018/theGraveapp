@@ -5,9 +5,10 @@ import { Call } from './screens/Call';
 import './styles.css';
 
 type Step =
-  | { name: 'lobby' }
+  | { name: 'lobby'; notice?: string }
   | { name: 'prejoin'; session: LobbyResult }
-  | { name: 'call'; session: LobbyResult; media: MediaChoice };
+  | { name: 'call'; session: LobbyResult; media: MediaChoice }
+  | { name: 'ended'; session: LobbyResult };
 
 export function App() {
   const [step, setStep] = useState<Step>({ name: 'lobby' });
@@ -22,7 +23,23 @@ export function App() {
     );
   }
   if (step.name === 'call') {
-    return <Call session={step.session} media={step.media} onLeave={() => setStep({ name: 'lobby' })} />;
+    return (
+      <Call
+        session={step.session}
+        media={step.media}
+        onLeave={() => setStep({ name: 'ended', session: step.session })}
+      />
+    );
   }
-  return <Lobby onContinue={(session) => setStep({ name: 'prejoin', session })} />;
+  if (step.name === 'ended') {
+    return (
+      <main className="center">
+        <h2>You left the interview</h2>
+        <p className="muted">Room <code>{step.session.roomCode}</code>. The interview is still open for others.</p>
+        <button className="primary" onClick={() => setStep({ name: 'prejoin', session: step.session })}>Rejoin</button>
+        <button onClick={() => setStep({ name: 'lobby' })}>Back to home</button>
+      </main>
+    );
+  }
+  return <Lobby notice={step.notice} onContinue={(session) => setStep({ name: 'prejoin', session })} />;
 }

@@ -68,8 +68,8 @@ Desktop app (macOS + Windows) for running technical interviews: video call, scre
 | **M2 — Screen share** ✅ | Source picker, share/stop, permission handling on mac and Windows | 1 wk |
 | **M3 — Chat** ✅ | Real-time chat via LiveKit data channel, history saved to DB | 1 wk |
 | **M4 — Code editor** ✅ | Monaco + Yjs live sync, language picker, shared cursors | 2 wks |
-| **M5 — Code execution** 🟡 code done, needs manual test | Docker sandbox runner (swappable for Piston), stdout/stderr panel, limits | 1–2 wks |
-| **M6 — Polish** | Layout (video + editor + chat), error states, reconnect handling, settings | 1–2 wks |
+| **M5 — Code execution** ✅ | Docker sandbox runner (swappable for Piston), stdout/stderr panel, limits | 1–2 wks |
+| **M6 — Polish** 🟡 code done, needs manual test | Layout (video + editor + chat), error states, reconnect handling, settings | 1–2 wks |
 | **M7 — Ship** | Signing, notarization, installers, auto-update, beta with real interviews | 1–2 wks |
 
 **Total:** ~10–12 weeks for one developer.

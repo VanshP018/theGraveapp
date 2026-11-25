@@ -4,6 +4,7 @@ import { WebsocketProvider } from 'y-websocket';
 import { MonacoBinding } from 'y-monaco';
 import type { Role, RunEvent } from '@tgi/shared';
 import { LANGUAGES, monaco } from '../lib/monaco';
+import { collabUrl, getSettings, useSettings } from '../lib/settings';
 
 interface Props {
   roomCode: string;
@@ -16,7 +17,6 @@ interface Props {
 }
 
 const COLORS: Record<Role, string> = { interviewer: '#4f8cff', candidate: '#ffb454' };
-const COLLAB_URL = 'ws://localhost:3001/collab';
 
 type Conn = 'connecting' | 'connected' | 'disconnected';
 
@@ -37,6 +37,10 @@ function cursorCss(states: Map<number, Record<string, any>>, selfId: number): st
 
 export function CodeEditor({ roomCode, token, displayName, role, run, onRun }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const settings = useSettings();
+  const [outputHeight, setOutputHeight] = useState(180);
   const metaRef = useRef<Y.Map<unknown> | null>(null);
   const [language, setLanguage] = useState('javascript');
   const [conn, setConn] = useState<Conn>('connecting');
@@ -63,7 +67,7 @@ export function CodeEditor({ roomCode, token, displayName, role, run, onRun }: P
   useEffect(() => {
     const doc = new Y.Doc();
     // BroadcastChannel would sync same-machine windows directly and bypass the server; keep the server the only path.
-    const provider = new WebsocketProvider(COLLAB_URL, roomCode, doc, { params: { token }, disableBc: true });
+    const provider = new WebsocketProvider(collabUrl(), roomCode, doc, { params: { token }, disableBc: true });
     const yText = doc.getText('code');
     const meta = doc.getMap('meta');
     metaRef.current = meta;
@@ -71,13 +75,14 @@ export function CodeEditor({ roomCode, token, displayName, role, run, onRun }: P
     const editor = monaco.editor.create(containerRef.current!, {
       value: '',
       language: 'javascript',
-      theme: 'vs-dark',
+      theme: getSettings().theme === 'light' ? 'vs' : 'vs-dark',
       automaticLayout: true,
       minimap: { enabled: false },
-      fontSize: 14,
+      fontSize: getSettings().editorFontSize,
       scrollBeyondLastLine: false,
       tabSize: 2,
     });
+    editorRef.current = editor;
     const model = editor.getModel()!;
     const binding = new MonacoBinding(yText, model, new Set([editor]), provider.awareness);
 
@@ -106,6 +111,7 @@ export function CodeEditor({ roomCode, token, displayName, role, run, onRun }: P
       meta.unobserve(onMeta);
       provider.off('status', onStatus);
       binding.destroy();
+      editorRef.current = null;
       editor.dispose();
       model.dispose();
       provider.destroy();
@@ -115,8 +121,29 @@ export function CodeEditor({ roomCode, token, displayName, role, run, onRun }: P
     };
   }, [roomCode, token, displayName, role]);
 
+  useEffect(() => {
+    monaco.editor.setTheme(settings.theme === 'light' ? 'vs' : 'vs-dark'); // theme is global to Monaco
+    editorRef.current?.updateOptions({ fontSize: settings.editorFontSize });
+  }, [settings.theme, settings.editorFontSize]);
+
+  // Drag the divider to give the editor or the output more room.
+  const startResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startHeight = outputHeight;
+    const max = (rootRef.current?.clientHeight ?? 600) - 160; // always leave room for the editor
+    const onMove = (ev: MouseEvent) =>
+      setOutputHeight(Math.max(70, Math.min(max, startHeight + (startY - ev.clientY))));
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
   return (
-    <div className="editor">
+    <div className="editor" ref={rootRef}>
       <div className="editor-bar">
         <label className="inline">
           Language
@@ -140,12 +167,13 @@ export function CodeEditor({ roomCode, token, displayName, role, run, onRun }: P
           placeholder="Program input (stdin)"
         />
       )}
-      <OutputPanel run={run} running={running} error={runError} />
+      <div className="resizer" onMouseDown={startResize} role="separator" aria-orientation="horizontal" />
+      <OutputPanel run={run} running={running} error={runError} height={outputHeight} />
     </div>
   );
 }
 
-function OutputPanel({ run, running, error }: { run: RunEvent | null; running: boolean; error: string | null }) {
+function OutputPanel({ run, running, error, height }: { run: RunEvent | null; running: boolean; error: string | null; height: number }) {
   const result = run?.result;
   let note: string | null = null;
   if (result?.timedOut) note = 'Stopped: the program ran for too long (15s limit).';
@@ -153,7 +181,7 @@ function OutputPanel({ run, running, error }: { run: RunEvent | null; running: b
   else if (result?.truncated) note = 'Output was cut off at the size limit.';
 
   return (
-    <div className="output">
+    <div className="output" style={{ height }}>
       <div className="output-head">
         <strong>Output</strong>
         {run && run.status !== 'running' && (

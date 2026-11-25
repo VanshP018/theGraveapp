@@ -1,26 +1,21 @@
 import type { ChatMessage, JoinRoomRequest, JoinRoomResponse, RunEvent } from '@tgi/shared';
+import { getClientId, getSettings } from './settings';
 
-const API_URL = 'http://localhost:3001';
+const TIMEOUT_MS = 30_000; // longest legitimate call is a code run (about 16s)
 
-async function post<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!res.ok) throw new Error(`Request failed (${res.status})`);
-  return res.json() as Promise<T>;
-}
-
-export const createRoom = () => post<{ roomCode: string }>('/rooms');
-export const joinRoom = (req: JoinRoomRequest) => post<JoinRoomResponse>('/rooms/join', req);
-
-async function authed<T>(method: 'GET' | 'POST', path: string, token: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    method,
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+async function request<T>(method: 'GET' | 'POST', path: string, body?: unknown, token?: string): Promise<T> {
+  const base = getSettings().serverUrl;
+  let res: Response;
+  try {
+    res = await fetch(`${base}${path}`, {
+      method,
+      headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch {
+    throw new Error(`Could not reach the server at ${base}. Check your connection and the server address in Settings.`);
+  }
   if (!res.ok) {
     let message = `Request failed (${res.status})`;
     try {
@@ -31,14 +26,33 @@ async function authed<T>(method: 'GET' | 'POST', path: string, token: string, bo
     }
     throw new Error(message);
   }
-  return res.json() as Promise<T>;
+  const text = await res.text();
+  return (text ? JSON.parse(text) : null) as T; // some endpoints legitimately return null
 }
 
+export const createRoom = () => request<{ roomCode: string }>('POST', '/rooms');
+export const joinRoom = (req: JoinRoomRequest) =>
+  request<JoinRoomResponse>('POST', '/rooms/join', { ...req, clientId: getClientId() });
+
 export const fetchMessages = (room: string, token: string) =>
-  authed<ChatMessage[]>('GET', `/rooms/${room}/messages`, token);
+  request<ChatMessage[]>('GET', `/rooms/${room}/messages`, undefined, token);
 export const sendMessage = (room: string, token: string, text: string) =>
-  authed<ChatMessage>('POST', `/rooms/${room}/messages`, token, { text });
+  request<ChatMessage>('POST', `/rooms/${room}/messages`, { text }, token);
+
 export const runCode = (room: string, token: string, stdin: string) =>
-  authed<RunEvent>('POST', `/rooms/${room}/run`, token, { stdin });
+  request<RunEvent>('POST', `/rooms/${room}/run`, { stdin }, token);
 export const fetchLastRun = (room: string, token: string) =>
-  authed<RunEvent | null>('GET', `/rooms/${room}/run/last`, token);
+  request<RunEvent | null>('GET', `/rooms/${room}/run/last`, undefined, token);
+
+export const setEditorOpen = (room: string, token: string, open: boolean) =>
+  request<{ editorOpen: boolean }>('POST', `/rooms/${room}/editor`, { open }, token);
+
+/** Checks a server address responds like our API. */
+export async function checkServer(baseUrl: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(5000) });
+    return res.ok && ((await res.json()) as { status?: string }).status === 'ok';
+  } catch {
+    return false;
+  }
+}

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  DisconnectReason,
+  MediaDeviceFailure,
   ParticipantEvent,
   Room,
   RoomEvent,
@@ -9,10 +11,11 @@ import {
   type RemoteTrackPublication,
 } from 'livekit-client';
 import type { ChatMessage, RunEvent } from '@tgi/shared';
-import { fetchLastRun, fetchMessages, joinRoom, runCode, sendMessage } from '../lib/api';
+import { fetchLastRun, fetchMessages, joinRoom, runCode, sendMessage, setEditorOpen } from '../lib/api';
 import { Chat } from '../components/Chat';
 import { CodeEditor } from '../components/CodeEditor';
 import { ScreenPicker } from '../components/ScreenPicker';
+import { Settings } from '../components/Settings';
 import type { LobbyResult } from './Lobby';
 import type { MediaChoice } from './PreJoin';
 
@@ -22,10 +25,32 @@ interface Props {
   onLeave: () => void;
 }
 
+function deviceMessage(e: unknown, what: string): string {
+  switch (MediaDeviceFailure.getFailure(e)) {
+    case MediaDeviceFailure.PermissionDenied:
+      return `Access to your ${what} is blocked. Allow it in your system settings.`;
+    case MediaDeviceFailure.NotFound:
+      return `No ${what} was found. Check that it is plugged in.`;
+    case MediaDeviceFailure.DeviceInUse:
+      return `Your ${what} is being used by another app.`;
+    default:
+      return `Your ${what} stopped working.`;
+  }
+}
+
 function Tile({ participant, source = Track.Source.Camera }: { participant: Participant; source?: Track.Source }) {
   const isScreen = source === Track.Source.ScreenShare;
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const [, bump] = useState(0);
+
+  useEffect(() => {
+    const onSpeaking = () => bump((n) => n + 1);
+    participant.on(ParticipantEvent.IsSpeakingChanged, onSpeaking);
+    return () => {
+      participant.off(ParticipantEvent.IsSpeakingChanged, onSpeaking);
+    };
+  }, [participant]);
 
   useEffect(() => {
     const attach = () => {
@@ -55,7 +80,7 @@ function Tile({ participant, source = Track.Source.Camera }: { participant: Part
   const micOn = participant.isMicrophoneEnabled;
 
   return (
-    <div className="tile">
+    <div className={`tile${participant.isSpeaking && !isScreen ? ' speaking' : ''}`}>
       <video ref={videoRef} autoPlay playsInline muted={participant.isLocal || isScreen} style={{ visibility: camOn ? 'visible' : 'hidden' }} />
       {!camOn && <div className="cam-off">{participant.name || participant.identity}</div>}
       <audio ref={audioRef} autoPlay />
@@ -73,7 +98,7 @@ export function Call({ session, media, onLeave }: Props) {
   const tokenRef = useRef<string>('');
   const chatOpenRef = useRef(false);
   const [participants, setParticipants] = useState<Participant[]>([]);
-  const [status, setStatus] = useState<'connecting' | 'connected' | 'reconnecting' | 'error'>('connecting');
+  const [status, setStatus] = useState<'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'error'>('connecting');
   const [error, setError] = useState<string | null>(null);
   const [micOn, setMicOn] = useState(media.audioEnabled);
   const [camOn, setCamOn] = useState(media.videoEnabled);
@@ -86,6 +111,12 @@ export function Call({ session, media, onLeave }: Props) {
   const [picking, setPicking] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [disconnectNote, setDisconnectNote] = useState('');
+  const [attempt, setAttempt] = useState(0);
+  const [selfId, setSelfId] = useState<string>();
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const addRef = useRef<(m: ChatMessage[]) => void>(() => {});
   const applyRunRef = useRef<(e: RunEvent) => void>(() => {});
   const [, force] = useState(0);
@@ -94,6 +125,9 @@ export function Call({ session, media, onLeave }: Props) {
     const room = new Room({ adaptiveStream: true, dynacast: true });
     roomRef.current = room;
     let cancelled = false;
+    setStatus('connecting');
+    setError(null);
+    setDisconnectNote('');
 
     // Messages can arrive from three places (POST response, data channel, history); dedupe by id.
     const addMessages = (incoming: ChatMessage[]) =>
@@ -104,6 +138,15 @@ export function Call({ session, media, onLeave }: Props) {
         return [...prev, ...fresh].sort((a, b) => a.sentAt.localeCompare(b.sentAt));
       });
     addRef.current = addMessages;
+
+    // Whether the shared code view is open is room state, so it is identical for everyone.
+    const applyRoomState = () => {
+      try {
+        setCodeOpen(JSON.parse(room.metadata || '{}').editorOpen === true);
+      } catch {
+        /* metadata we did not write; ignore */
+      }
+    };
 
     // The same run arrives via data channel and the POST response; never let a late 'running' undo a result.
     const applyRun = (e: RunEvent) =>
@@ -124,6 +167,7 @@ export function Call({ session, media, onLeave }: Props) {
       .on(RoomEvent.LocalTrackPublished, refresh)
       .on(RoomEvent.LocalTrackUnpublished, refresh)
       .on(RoomEvent.TrackUnsubscribed, refresh)
+      .on(RoomEvent.RoomMetadataChanged, applyRoomState)
       .on(RoomEvent.Reconnecting, () => setStatus('reconnecting'))
       .on(RoomEvent.Reconnected, () => setStatus('connected'))
       .on(RoomEvent.DataReceived, (payload: Uint8Array, _p, _k, topic?: string) => {
@@ -139,7 +183,20 @@ export function Call({ session, media, onLeave }: Props) {
           /* ignore malformed packets */
         }
       })
-      .on(RoomEvent.Disconnected, () => !cancelled && onLeave())
+      .on(RoomEvent.MediaDevicesError, (e: Error) => setNotice(deviceMessage(e, 'camera or microphone')))
+      .on(RoomEvent.Disconnected, (reason?: DisconnectReason) => {
+        if (cancelled) return; // we closed it ourselves (leaving or rejoining)
+        setDisconnectNote(
+          reason === DisconnectReason.DUPLICATE_IDENTITY
+            ? 'You joined this interview from another window, so this one was disconnected.'
+            : reason === DisconnectReason.PARTICIPANT_REMOVED
+              ? 'You were removed from the interview.'
+              : reason === DisconnectReason.ROOM_DELETED
+                ? 'The interview was ended.'
+                : 'The connection to the call was lost.',
+        );
+        setStatus('disconnected');
+      })
       .on(RoomEvent.TrackSubscribed, (_t: RemoteTrack, _p: RemoteTrackPublication) => refresh());
 
     (async () => {
@@ -152,7 +209,9 @@ export function Call({ session, media, onLeave }: Props) {
         if (cancelled) return;
         await room.localParticipant.setMicrophoneEnabled(media.audioEnabled, media.audioDeviceId ? { deviceId: media.audioDeviceId } : undefined);
         await room.localParticipant.setCameraEnabled(media.videoEnabled, media.videoDeviceId ? { deviceId: media.videoDeviceId } : undefined);
+        setSelfId(room.localParticipant.identity);
         setStatus('connected');
+        applyRoomState();
         refresh();
         fetchLastRun(session.roomCode, token).then((e) => e && applyRun(e)).catch(() => { /* best-effort */ });
         fetchMessages(session.roomCode, token).then(addMessages).catch(() => { /* history is best-effort */ });
@@ -169,17 +228,36 @@ export function Call({ session, media, onLeave }: Props) {
       void room.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [attempt]);
 
   const toggleMic = async () => {
     const next = !micOn;
-    await roomRef.current?.localParticipant.setMicrophoneEnabled(next);
-    setMicOn(next);
+    try {
+      await roomRef.current?.localParticipant.setMicrophoneEnabled(next);
+      setMicOn(next);
+    } catch (e) {
+      setNotice(deviceMessage(e, 'microphone'));
+    }
   };
   const toggleCam = async () => {
     const next = !camOn;
-    await roomRef.current?.localParticipant.setCameraEnabled(next);
-    setCamOn(next);
+    try {
+      await roomRef.current?.localParticipant.setCameraEnabled(next);
+      setCamOn(next);
+    } catch (e) {
+      setNotice(deviceMessage(e, 'camera'));
+    }
+  };
+
+  const toggleCode = async () => {
+    const next = !codeOpen;
+    setCodeOpen(next); // optimistic; the room-state event confirms it for everyone
+    try {
+      await setEditorOpen(session.roomCode, tokenRef.current, next);
+    } catch (e) {
+      setCodeOpen(!next);
+      setShareError(e instanceof Error ? e.message : 'Could not change the shared view');
+    }
   };
 
   const toggleChat = () => {
@@ -223,6 +301,7 @@ export function Call({ session, media, onLeave }: Props) {
     return (
       <main className="center">
         <p className="error">{error}</p>
+        <button className="primary" onClick={() => setAttempt((a) => a + 1)}>Try again</button>
         <button onClick={onLeave}>Back</button>
       </main>
     );
@@ -233,10 +312,23 @@ export function Call({ session, media, onLeave }: Props) {
       <header>
         <span>Room <code>{session.roomCode}</code></span>
         <button onClick={() => void navigator.clipboard.writeText(session.roomCode)}>Copy code</button>
-        {status !== 'connected' && <span className="muted">{status}…</span>}
+        {status === 'connecting' && <span className="muted">Connecting…</span>}
+        <button style={{ marginLeft: 'auto' }} onClick={() => setShowSettings(true)}>⚙</button>
       </header>
 
-      {shareError && <p className="error" style={{ padding: '0 16px' }}>{shareError}</p>}
+      {status === 'reconnecting' && <div className="banner warn">Connection lost. Trying to reconnect…</div>}
+      {notice && (
+        <div className="banner warn">
+          <span>{notice}</span>
+          <button onClick={() => setNotice(null)}>Dismiss</button>
+        </div>
+      )}
+      {shareError && (
+        <div className="banner err">
+          <span>{shareError}</span>
+          <button onClick={() => setShareError(null)}>Dismiss</button>
+        </div>
+      )}
 
       <div className="body-row">
       {codeOpen && token ? (
@@ -259,7 +351,7 @@ export function Call({ session, media, onLeave }: Props) {
           {participants.map((p) => <Tile key={p.identity} participant={p} />)}
         </section>
       )}
-      {chatOpen && <Chat messages={messages} selfName={session.displayName} onSend={send} onClose={toggleChat} />}
+      {chatOpen && <Chat messages={messages} selfName={session.displayName} selfId={selfId} onSend={send} onClose={toggleChat} />}
       </div>
 
       <footer>
@@ -272,11 +364,38 @@ export function Call({ session, media, onLeave }: Props) {
             Share screen
           </button>
         )}
-        <button className={codeOpen ? 'primary' : ''} onClick={() => setCodeOpen((v) => !v)}>Code</button>
+        <button className={codeOpen ? 'primary' : ''} onClick={toggleCode}>Code</button>
         <button onClick={toggleChat}>Chat{unread > 0 && <span className="unread">{unread}</span>}</button>
-        <button className="danger" onClick={onLeave}>Leave</button>
+        <button className="danger" onClick={() => setConfirmLeave(true)}>Leave</button>
       </footer>
       {picking && <ScreenPicker onPick={startShare} onCancel={() => setPicking(false)} />}
+      {showSettings && <Settings inCall onClose={() => setShowSettings(false)} />}
+
+      {confirmLeave && (
+        <div className="modal-backdrop" onClick={() => setConfirmLeave(false)}>
+          <div className="modal small" onClick={(e) => e.stopPropagation()}>
+            <h3>Leave the interview?</h3>
+            <p className="muted">The others stay in the room. You can rejoin with the same code.</p>
+            <div className="row">
+              <button onClick={() => setConfirmLeave(false)}>Stay</button>
+              <button className="danger" onClick={onLeave}>Leave</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {status === 'disconnected' && (
+        <div className="modal-backdrop">
+          <div className="modal small">
+            <h3>Disconnected</h3>
+            <p>{disconnectNote}</p>
+            <div className="row">
+              <button className="primary" onClick={() => setAttempt((a) => a + 1)}>Rejoin</button>
+              <button onClick={onLeave}>Leave</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
