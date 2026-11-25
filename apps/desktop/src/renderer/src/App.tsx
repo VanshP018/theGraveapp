@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Lobby, type LobbyResult } from './screens/Lobby';
 import { PreJoin, type MediaChoice } from './screens/PreJoin';
 import { Call } from './screens/Call';
+import { Splash } from './screens/Splash';
 import './styles.css';
 
 type Step =
@@ -12,6 +13,9 @@ type Step =
 
 export function App() {
   const [step, setStep] = useState<Step>({ name: 'lobby' });
+  const [splash, setSplash] = useState(true);
+
+  if (splash) return <Splash onDone={() => setSplash(false)} />;
 
   if (step.name === 'prejoin') {
     return (
