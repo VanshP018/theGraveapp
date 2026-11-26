@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { listDevices, type DeviceLists } from '../lib/devices';
 import { getSettings, updateSettings } from '../lib/settings';
 import type { LobbyResult } from './Lobby';
+import { CamIcon, CamOffIcon, MicIcon, MicOffIcon } from '../components/icons';
 
 export interface MediaChoice {
   videoDeviceId?: string;
@@ -188,18 +189,3 @@ export function PreJoin({ session, onJoin, onBack }: Props) {
     </main>
   );
 }
-
-type IconProps = { size?: number };
-const svg = (size: number) => ({ width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true });
-const MicIcon = ({ size = 20 }: IconProps) => (
-  <svg {...svg(size)}><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
-);
-const MicOffIcon = ({ size = 20 }: IconProps) => (
-  <svg {...svg(size)}><path d="M3 3l18 18M9 9v2a3 3 0 0 0 5 2.2M15 9.3V6a3 3 0 0 0-5.7-1.3M5 11a7 7 0 0 0 11.2 5.6M19 11a7 7 0 0 1-.6 2.8M12 18v3" /></svg>
-);
-const CamIcon = ({ size = 20 }: IconProps) => (
-  <svg {...svg(size)}><rect x="3" y="6" width="13" height="12" rx="3" /><path d="M16 10.5l5-3v9l-5-3" /></svg>
-);
-const CamOffIcon = ({ size = 20 }: IconProps) => (
-  <svg {...svg(size)}><path d="M3 3l18 18M7 6h6a3 3 0 0 1 3 3v3.5M16 10.5l5-3v9l-3.5-2.1M3 8v7a3 3 0 0 0 3 3h7" /></svg>
-);

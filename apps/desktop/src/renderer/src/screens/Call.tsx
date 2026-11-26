@@ -13,6 +13,7 @@ import {
 import type { ChatMessage, RunEvent } from '@tgi/shared';
 import { fetchLastRun, fetchMessages, joinRoom, runCode, sendMessage, setEditorOpen } from '../lib/api';
 import { Chat } from '../components/Chat';
+import { CamIcon, CamOffIcon, ChatIcon, CodeIcon, LeaveIcon, MicIcon, MicOffIcon, ShareIcon } from '../components/icons';
 // Monaco is only needed once the editor is opened.
 const CodeEditor = lazy(() => import('../components/CodeEditor').then((m) => ({ default: m.CodeEditor })));
 import { ScreenPicker } from '../components/ScreenPicker';
@@ -300,10 +301,13 @@ export function Call({ session, media, onLeave }: Props) {
 
   if (status === 'error') {
     return (
-      <main className="center">
-        <p className="error">{error}</p>
-        <button className="primary" onClick={() => setAttempt((a) => a + 1)}>Try again</button>
-        <button onClick={onLeave}>Back</button>
+      <main className="auth">
+        <div className="auth-card status-card">
+          <h2>Couldn’t join</h2>
+          <p className="glass-error" role="alert">{error}</p>
+          <button className="glass-cta" onClick={() => setAttempt((a) => a + 1)}>Try again</button>
+          <button className="glass-ghost" onClick={onLeave}>Back</button>
+        </div>
       </main>
     );
   }
@@ -311,10 +315,13 @@ export function Call({ session, media, onLeave }: Props) {
   return (
     <div className="call">
       <header>
-        <span>Room <code>{session.roomCode}</code></span>
-        <button onClick={() => void navigator.clipboard.writeText(session.roomCode)}>Copy code</button>
+        <button className="code-chip" onClick={() => void navigator.clipboard.writeText(session.roomCode)} title="Copy room code">
+          <span className="code-label">Room</span>
+          <code>{session.roomCode}</code>
+          <span className="code-copy">Copy</span>
+        </button>
         {status === 'connecting' && <span className="muted">Connecting…</span>}
-        <button style={{ marginLeft: 'auto' }} onClick={() => setShowSettings(true)}>⚙</button>
+        <button className="icon-btn" style={{ marginLeft: 'auto' }} onClick={() => setShowSettings(true)} aria-label="Settings">⚙</button>
       </header>
 
       {status === 'reconnecting' && <div className="banner warn">Connection lost. Trying to reconnect…</div>}
@@ -358,18 +365,27 @@ export function Call({ session, media, onLeave }: Props) {
       </div>
 
       <footer>
-        <button onClick={toggleMic}>{micOn ? 'Mute' : 'Unmute'}</button>
-        <button onClick={toggleCam}>{camOn ? 'Stop video' : 'Start video'}</button>
-        {sharing ? (
-          <button className="primary" onClick={stopShare}>Stop sharing</button>
-        ) : (
-          <button disabled={someoneElseSharing} title={someoneElseSharing ? 'Someone else is sharing' : ''} onClick={() => setPicking(true)}>
-            Share screen
+        <div className="dock">
+          <button className={`dock-btn${micOn ? '' : ' off'}`} onClick={toggleMic} aria-pressed={!micOn}>
+            {micOn ? <MicIcon /> : <MicOffIcon />}<span>{micOn ? 'Mute' : 'Unmute'}</span>
           </button>
-        )}
-        <button className={codeOpen ? 'primary' : ''} onClick={toggleCode}>Code</button>
-        <button onClick={toggleChat}>Chat{unread > 0 && <span className="unread">{unread}</span>}</button>
-        <button className="danger" onClick={() => setConfirmLeave(true)}>Leave</button>
+          <button className={`dock-btn${camOn ? '' : ' off'}`} onClick={toggleCam} aria-pressed={!camOn}>
+            {camOn ? <CamIcon /> : <CamOffIcon />}<span>{camOn ? 'Stop video' : 'Start video'}</span>
+          </button>
+          {sharing ? (
+            <button className="dock-btn active" onClick={stopShare}><ShareIcon /><span>Stop sharing</span></button>
+          ) : (
+            <button className="dock-btn" disabled={someoneElseSharing} title={someoneElseSharing ? 'Someone else is sharing' : ''} onClick={() => setPicking(true)}>
+              <ShareIcon /><span>Share</span>
+            </button>
+          )}
+          <button className={`dock-btn${codeOpen ? ' active' : ''}`} onClick={toggleCode}><CodeIcon /><span>Code</span></button>
+          <button className={`dock-btn${chatOpen ? ' active' : ''}`} onClick={toggleChat}>
+            <ChatIcon /><span>Chat</span>{unread > 0 && <span className="unread">{unread}</span>}
+          </button>
+          <span className="dock-sep" aria-hidden />
+          <button className="dock-btn leave" onClick={() => setConfirmLeave(true)}><LeaveIcon /><span>Leave</span></button>
+        </div>
       </footer>
       {picking && <ScreenPicker onPick={startShare} onCancel={() => setPicking(false)} />}
       {showSettings && <Settings inCall onClose={() => setShowSettings(false)} />}

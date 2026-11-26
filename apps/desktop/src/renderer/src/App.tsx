@@ -46,11 +46,13 @@ export function App() {
   }
   if (step.name === 'ended') {
     return (
-      <main className="center">
-        <h2>You left the interview</h2>
-        <p className="muted">Room <code>{step.session.roomCode}</code>. The interview is still open for others.</p>
-        <button className="primary" onClick={() => setStep({ name: 'prejoin', session: step.session })}>Rejoin</button>
-        <button onClick={() => setStep({ name: 'lobby' })}>Back to home</button>
+      <main className="auth">
+        <div className="auth-card status-card">
+          <h2>You left the interview</h2>
+          <p className="auth-sub">Room <code>{step.session.roomCode}</code> is still open for others.</p>
+          <button className="glass-cta" onClick={() => setStep({ name: 'prejoin', session: step.session })}>Rejoin</button>
+          <button className="glass-ghost" onClick={() => setStep({ name: 'lobby' })}>Back to home</button>
+        </div>
       </main>
     );
   }
