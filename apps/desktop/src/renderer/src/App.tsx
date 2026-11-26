@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Lobby, type LobbyResult } from './screens/Lobby';
 import { PreJoin, type MediaChoice } from './screens/PreJoin';
-import { Call } from './screens/Call';
+const loadCall = () => import('./screens/Call');
+const Call = lazy(() => loadCall().then((m) => ({ default: m.Call })));
 import { Splash } from './screens/Splash';
 import './styles.css';
 
@@ -14,6 +15,12 @@ type Step =
 export function App() {
   const [step, setStep] = useState<Step>({ name: 'lobby' });
   const [splash, setSplash] = useState(true);
+
+  // The call screen (LiveKit, Monaco, Yjs) is the heavy part. Fetch it while the splash plays, off the critical path.
+  useEffect(() => {
+    const t = setTimeout(() => void loadCall(), 400);
+    return () => clearTimeout(t);
+  }, []);
 
   if (splash) return <Splash onDone={() => setSplash(false)} />;
 
@@ -28,11 +35,13 @@ export function App() {
   }
   if (step.name === 'call') {
     return (
-      <Call
-        session={step.session}
-        media={step.media}
-        onLeave={() => setStep({ name: 'ended', session: step.session })}
-      />
+      <Suspense fallback={<main className="center"><p className="muted">Joining…</p></main>}>
+        <Call
+          session={step.session}
+          media={step.media}
+          onLeave={() => setStep({ name: 'ended', session: step.session })}
+        />
+      </Suspense>
     );
   }
   if (step.name === 'ended') {

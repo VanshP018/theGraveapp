@@ -74,6 +74,8 @@ function createWindow(): void {
     minWidth: 960,
     minHeight: 600,
     title: 'theGrave',
+    backgroundColor: '#07080c',
+    show: false,
     ...(devIcon ? { icon: devIcon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -82,6 +84,8 @@ function createWindow(): void {
       sandbox: true,
     },
   });
+
+  win.once('ready-to-show', () => win.show());
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url);

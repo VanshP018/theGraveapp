@@ -3,7 +3,6 @@ import type { Role } from '@tgi/shared';
 import { createRoom } from '../lib/api';
 import { getSettings, updateSettings } from '../lib/settings';
 import { Settings } from '../components/Settings';
-import { Aurora } from '../components/Aurora';
 import logo from '../assets/grave-logo.png';
 
 export interface LobbyResult {
@@ -52,7 +51,6 @@ export function Lobby({ onContinue, notice }: { onContinue: (r: LobbyResult) => 
 
   return (
     <main className="auth">
-      <Aurora />
       <button className="glass-icon-btn auth-settings" onClick={() => setShowSettings(true)} aria-label="Settings">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <circle cx="12" cy="12" r="3" />
@@ -60,7 +58,7 @@ export function Lobby({ onContinue, notice }: { onContinue: (r: LobbyResult) => 
         </svg>
       </button>
 
-      <form className="glass-card auth-card" onSubmit={submit}>
+      <form className="auth-card" onSubmit={submit}>
         <img className="auth-logo" src={logo} alt="GRAVE" draggable={false} />
         <p className="auth-sub">{mode === 'start' ? 'Host a technical interview' : 'Join an interview as a candidate'}</p>
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import {
   DisconnectReason,
   MediaDeviceFailure,
@@ -13,7 +13,8 @@ import {
 import type { ChatMessage, RunEvent } from '@tgi/shared';
 import { fetchLastRun, fetchMessages, joinRoom, runCode, sendMessage, setEditorOpen } from '../lib/api';
 import { Chat } from '../components/Chat';
-import { CodeEditor } from '../components/CodeEditor';
+// Monaco is only needed once the editor is opened.
+const CodeEditor = lazy(() => import('../components/CodeEditor').then((m) => ({ default: m.CodeEditor })));
 import { ScreenPicker } from '../components/ScreenPicker';
 import { Settings } from '../components/Settings';
 import type { LobbyResult } from './Lobby';
@@ -334,7 +335,9 @@ export function Call({ session, media, onLeave }: Props) {
       {codeOpen && token ? (
         <section className="stage">
           <div className="main">
+            <Suspense fallback={<p className="muted" style={{ padding: 16 }}>Loading editor…</p>}>
             <CodeEditor roomCode={session.roomCode} token={token} displayName={session.displayName} role={session.role} run={run} onRun={handleRun} />
+            </Suspense>
           </div>
           <div className="strip">
             {sharer && <Tile key={`${sharer.identity}-screen`} participant={sharer} source={Track.Source.ScreenShare} />}
